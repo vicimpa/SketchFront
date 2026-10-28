@@ -26,6 +26,7 @@ import { GroundImpactData } from './GroundImpactData';
 import { ClosestObjectFinder } from '../core/ClosestObjectFinder';
 import { Object3D } from 'three';
 import { EntityType } from '../enums/EntityType';
+import type { Combatant } from '../combat/Combatant';
 
 export class Character extends THREE.Object3D implements IWorldEntity
 {
@@ -79,6 +80,11 @@ export class Character extends THREE.Object3D implements IWorldEntity
 	public occupyingSeat: VehicleSeat = null;
 	public vehicleEntryInstance: VehicleEntryInstance = null;
 	
+	// Combat
+	public combat: Combatant;
+	/** Replaces the state's arcade velocity target while set, e.g. to strafe while aiming. */
+	public movementOverride: THREE.Vector3 = null;
+
 	private physicsEnabled: boolean = true;
 
 	constructor(gltf: any)
@@ -293,6 +299,10 @@ export class Character extends THREE.Object3D implements IWorldEntity
 			{
 				this.world.restartScenario();
 			}
+			else if (this.combat?.handleKey(code, pressed, event))
+			{
+				return;
+			}
 			else
 			{
 				for (const action in this.actions) {
@@ -317,6 +327,8 @@ export class Character extends THREE.Object3D implements IWorldEntity
 		}
 		else
 		{
+			if (this.combat?.handleMouseButton(code, pressed)) return;
+
 			for (const action in this.actions) {
 				if (this.actions.hasOwnProperty(action)) {
 					const binding = this.actions[action];
@@ -347,6 +359,10 @@ export class Character extends THREE.Object3D implements IWorldEntity
 		if (this.controlledObject !== undefined)
 		{
 			this.controlledObject.handleMouseWheel(event, value);
+		}
+		else if (this.combat !== undefined)
+		{
+			this.combat.handleWheel(value);
 		}
 		else
 		{
@@ -408,6 +424,7 @@ export class Character extends THREE.Object3D implements IWorldEntity
 		this.vehicleEntryInstance?.update(timeStep);
 		// console.log(this.occupyingSeat);
 		this.charState?.update(timeStep);
+		this.combat?.applyMovement();
 
 		// this.visuals.position.copy(this.modelOffset);
 		if (this.physicsEnabled) this.springMovement(timeStep);
@@ -433,6 +450,7 @@ export class Character extends THREE.Object3D implements IWorldEntity
 		}
 
 		this.updateMatrixWorld();
+		this.combat?.afterCharacterUpdate(timeStep);
 	}
 
 	public inputReceiverInit(): void
@@ -445,6 +463,7 @@ export class Character extends THREE.Object3D implements IWorldEntity
 
 		this.world.cameraOperator.setRadius(1.6, true);
 		this.world.cameraOperator.followMode = false;
+		this.world.cameraOperator.shoulderMode = true;
 		// this.world.dirLight.target = this;
 
 		this.displayControls();
@@ -460,6 +479,26 @@ export class Character extends THREE.Object3D implements IWorldEntity
 			{
 				keys: ['Shift'],
 				desc: 'Sprint'
+			},
+			{
+				keys: ['LMB'],
+				desc: 'Fire'
+			},
+			{
+				keys: ['RMB'],
+				desc: 'Aim'
+			},
+			{
+				keys: ['R'],
+				desc: 'Reload'
+			},
+			{
+				keys: ['1', '2', '3', 'or', 'Wheel'],
+				desc: 'Switch weapon'
+			},
+			{
+				keys: ['Q'],
+				desc: 'Swap shoulder'
 			},
 			{
 				keys: ['Space'],
@@ -488,8 +527,9 @@ export class Character extends THREE.Object3D implements IWorldEntity
 		}
 		else
 		{
-			// Look in camera's direction
-			this.viewVector = new THREE.Vector3().subVectors(this.position, this.world.camera.position);
+			// Look in camera's direction. Not from the camera to the character:
+			// over the shoulder the camera sits off to the side and that line is skewed.
+			this.viewVector = this.world.camera.getWorldDirection(new THREE.Vector3());
 			this.getWorldPosition(this.world.cameraOperator.target);
 		}
 		
@@ -520,7 +560,7 @@ export class Character extends THREE.Object3D implements IWorldEntity
 	public springMovement(timeStep: number): void
 	{
 		// Simulator
-		this.velocitySimulator.target.copy(this.velocityTarget);
+		this.velocitySimulator.target.copy(this.movementOverride ?? this.velocityTarget);
 		this.velocitySimulator.simulate(timeStep);
 
 		// Update values

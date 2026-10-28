@@ -1,0 +1,163 @@
+#hud {
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	font-family: 'Rajdhani', 'Solway', sans-serif;
+	font-weight: 600;
+	color: #fff;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+	z-index: 10;
+}
+
+/* Crosshair: four lines pushed out by the spread */
+.hud-crosshair {
+	--gap: 8px;
+	position: absolute;
+	left: 50%;
+	top: 50%;
+}
+
+.hud-crosshair i {
+	position: absolute;
+	background: #fff;
+	box-shadow: 0 0 2px rgba(0, 0, 0, 0.9);
+	transition: transform 0.05s linear;
+}
+
+.hud-crosshair .t, .hud-crosshair .b { width: 2px; height: 8px; left: -1px; }
+.hud-crosshair .l, .hud-crosshair .r { width: 8px; height: 2px; top: -1px; }
+.hud-crosshair .t { top: calc(-8px - var(--gap)); }
+.hud-crosshair .b { top: var(--gap); }
+.hud-crosshair .l { left: calc(-8px - var(--gap)); }
+.hud-crosshair .r { left: var(--gap); }
+.hud-crosshair .dot { width: 2px; height: 2px; left: -1px; top: -1px; }
+.hud-crosshair.aiming .t, .hud-crosshair.aiming .b, .hud-crosshair.aiming .l, .hud-crosshair.aiming .r { opacity: 0.6; }
+
+/* Hitmarker: an X around the crosshair */
+.hud-hitmarker {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	opacity: 0;
+}
+
+.hud-hitmarker i {
+	position: absolute;
+	width: 10px;
+	height: 2px;
+	left: -5px;
+	top: -1px;
+	background: #fff;
+	box-shadow: 0 0 2px rgba(0, 0, 0, 0.9);
+}
+
+.hud-hitmarker i:nth-child(1) { transform: rotate(45deg) translateX(-12px); }
+.hud-hitmarker i:nth-child(2) { transform: rotate(135deg) translateX(-12px); }
+.hud-hitmarker i:nth-child(3) { transform: rotate(225deg) translateX(-12px); }
+.hud-hitmarker i:nth-child(4) { transform: rotate(315deg) translateX(-12px); }
+.hud-hitmarker.headshot i { background: #ffd23f; }
+.hud-hitmarker.kill i { background: #ff3b3b; width: 14px; left: -7px; }
+.hud-hitmarker.show { animation: hud-hitmarker 0.2s ease-out forwards; }
+.hud-hitmarker.kill.show { animation-duration: 0.4s; }
+
+@keyframes hud-hitmarker {
+	from { opacity: 1; transform: scale(1.3); }
+	30% { opacity: 1; transform: scale(1); }
+	to { opacity: 0; transform: scale(1); }
+}
+
+/* Damage flash on the screen edges */
+.hud-damage {
+	--strength: 0.5;
+	position: absolute;
+	inset: 0;
+	opacity: 0;
+	background: radial-gradient(ellipse at center, transparent 55%, rgba(200, 0, 0, 0.85) 100%);
+}
+
+.hud-damage.show { animation: hud-damage 0.6s ease-out forwards; }
+
+@keyframes hud-damage {
+	from { opacity: var(--strength); }
+	to { opacity: 0; }
+}
+
+/* Killfeed under the GitHub corner */
+.hud-killfeed {
+	position: absolute;
+	top: 96px;
+	left: 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 18px;
+}
+
+.hud-kill {
+	display: flex;
+	gap: 8px;
+	padding: 2px 10px;
+	background: rgba(0, 0, 0, 0.45);
+	border-radius: 3px;
+	animation: hud-kill-in 0.15s ease-out;
+}
+
+.hud-kill.mine { border-left: 3px solid #ffd23f; }
+.hud-kill .weapon { color: #c9c9c9; }
+
+@keyframes hud-kill-in {
+	from { opacity: 0; transform: translateX(-10px); }
+}
+
+/* Health, bottom center */
+.hud-health {
+	position: absolute;
+	bottom: 28px;
+	left: 50%;
+	width: 260px;
+	transform: translateX(-50%);
+	text-align: center;
+}
+
+.hud-health-text { font-size: 22px; margin-bottom: 2px; }
+
+.hud-health-bar {
+	height: 8px;
+	background: rgba(0, 0, 0, 0.5);
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.hud-health-fill {
+	height: 100%;
+	background: #f2f2f2;
+	transition: width 0.15s ease-out;
+}
+
+.hud-health-fill.low { background: #ff4a4a; }
+
+/* Weapon and ammo, bottom right */
+.hud-weapon {
+	position: absolute;
+	right: 32px;
+	bottom: 24px;
+	text-align: right;
+}
+
+.hud-weapon-name { font-size: 18px; color: #d9d9d9; text-transform: uppercase; letter-spacing: 1px; }
+.hud-ammo-mag { font-size: 52px; line-height: 1; }
+.hud-ammo-mag.low { color: #ff4a4a; }
+.hud-ammo-reserve { font-size: 26px; margin-left: 6px; color: #cfcfcf; }
+
+.hud-reload {
+	--progress: 0;
+	height: 4px;
+	margin-top: 4px;
+	background: rgba(0, 0, 0, 0.5);
+}
+
+.hud-reload-fill {
+	height: 100%;
+	width: calc(var(--progress) * 100%);
+	background: #ffd23f;
+}

@@ -31,6 +31,7 @@ import { Sky } from './Sky';
 import { Ocean } from './Ocean';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { Dialog } from '../core/Dialog';
+import { CombatSystem } from '../combat/CombatSystem';
 
 export class World
 {
@@ -62,6 +63,7 @@ export class World
 	public paths: Path[] = [];
 	public scenarioGUIFolder: any;
 	public updatables: IUpdatable[] = [];
+	public combat: CombatSystem;
 
 	private lastScenarioID: string;
 	private lastTime: number;
@@ -164,6 +166,7 @@ export class World
 		this.inputManager = new InputManager(this, this.renderer.domElement);
 		this.cameraOperator = new CameraOperator(this, this.camera, this.params.Mouse_Sensitivity);
 		this.sky = new Sky(this);
+		this.combat = new CombatSystem(this);
 		
 		// Load scene if path is supplied
 		if (worldScenePath !== undefined)
@@ -507,7 +510,7 @@ export class World
 		// Fonts
 		const fonts = document.createElement('link');
 		fonts.rel = 'stylesheet';
-		fonts.href = 'https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Solway:wght@400;500;700&family=Cutive+Mono&display=swap';
+		fonts.href = 'https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Solway:wght@400;500;700&family=Cutive+Mono&family=Rajdhani:wght@500;600;700&display=swap';
 		document.head.appendChild(fonts);
 
 		// Loader

@@ -252,6 +252,7 @@ export abstract class Vehicle extends THREE.Object3D implements IWorldEntity
 
 	public inputReceiverInit(): void
 	{
+		this.world.cameraOperator.shoulderMode = false;
 		this.collision.allowSleep = false;
 		this.setFirstPersonView(false);
 	}

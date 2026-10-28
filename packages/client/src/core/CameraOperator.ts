@@ -31,6 +31,25 @@ export class CameraOperator implements IInputReceiver, IUpdatable
 
 	public followMode: boolean = false;
 
+	/** Over-the-shoulder framing for a character on foot. */
+	public shoulderMode: boolean = false;
+	/** 1 for the right shoulder, -1 for the left. */
+	public shoulderSide: number = 1;
+	/** Aim from 0 (hip) to 1 (aimed), set by the player's combatant every frame. */
+	public aimAmount: number = 0;
+	/** FOV divisor at full aim. */
+	public aimZoom: number = 1;
+
+	private shoulderBlend: number = 0;
+	private shoulderSideSmoothed: number = 1;
+	private baseFov: number;
+	private pendingRecoil = new THREE.Vector2();
+	/** Recoil pitch the player hasn't pulled back down yet; returned once firing stops. */
+	private recoilDebt: number = 0;
+	private sinceRecoil: number = Infinity;
+	private shake: number = 0;
+	private offset = new THREE.Vector3();
+
 	public characterCaller: Character;
 
 	constructor(world: World, camera: THREE.Camera, sensitivityX: number = 1, sensitivityY: number = sensitivityX * 0.8)
@@ -59,6 +78,8 @@ export class CameraOperator implements IInputReceiver, IUpdatable
 			'fast': new KeyBinding('ShiftLeft'),
 		};
 
+		this.baseFov = (camera as THREE.PerspectiveCamera).fov;
+
 		world.registerUpdatable(this);
 	}
 
@@ -81,11 +102,43 @@ export class CameraOperator implements IInputReceiver, IUpdatable
 		this.theta -= deltaX * (this.sensitivity.x / 2);
 		this.theta %= 360;
 		this.phi += deltaY * (this.sensitivity.y / 2);
+		// Pulling down against recoil pays it off, so recovery doesn't drag the aim under the target
+		if (deltaY > 0) this.recoilDebt = Math.max(0, this.recoilDebt - deltaY * (this.sensitivity.y / 2));
 		this.phi = Math.min(85, Math.max(-85, this.phi));
+	}
+
+	/** Kicks the view up and sideways, in degrees. Applied over a few frames. */
+	public addRecoil(pitch: number, yaw: number): void
+	{
+		this.pendingRecoil.x += pitch;
+		this.pendingRecoil.y += yaw;
+		this.recoilDebt += pitch;
+		this.sinceRecoil = 0;
+	}
+
+	/** Adds camera shake; intensity is clamped to 1 and decays quickly. */
+	public addShake(amount: number): void
+	{
+		this.shake = Math.min(1, this.shake + amount);
 	}
 
 	public update(timeScale: number): void
 	{
+		// Recoil: apply most of the pending kick right away, the rest over the next frames
+		const kick = Math.min(1, timeScale * 40);
+		this.phi = Math.min(85, Math.max(-85, this.phi - this.pendingRecoil.x * kick));
+		this.theta -= this.pendingRecoil.y * kick;
+		this.pendingRecoil.multiplyScalar(1 - kick);
+
+		// Once firing stops, ease the view back down by the recoil the player didn't compensate
+		this.sinceRecoil += timeScale;
+		if (this.sinceRecoil > 0.15 && this.recoilDebt > 0)
+		{
+			const recover = Math.min(this.recoilDebt, Math.max(this.recoilDebt * 8, 4) * timeScale);
+			this.phi = Math.min(85, this.phi + recover);
+			this.recoilDebt -= recover;
+		}
+
 		if (this.followMode === true)
 		{
 			this.camera.position.y = THREE.MathUtils.clamp(this.camera.position.y, this.target.y, Number.POSITIVE_INFINITY);
@@ -104,7 +157,43 @@ export class CameraOperator implements IInputReceiver, IUpdatable
 			this.camera.position.z = this.target.z + this.radius * Math.cos(this.theta * Math.PI / 180) * Math.cos(this.phi * Math.PI / 180);
 			this.camera.updateMatrix();
 			this.camera.lookAt(this.target);
+
+			this.updateShoulder(timeScale);
 		}
+
+		this.updateShake(timeScale);
+	}
+
+	private updateShoulder(timeStep: number): void
+	{
+		const blendSpeed = Math.min(1, timeStep * 10);
+		this.shoulderBlend += ((this.shoulderMode ? 1 : 0) - this.shoulderBlend) * blendSpeed;
+		this.shoulderSideSmoothed += (this.shoulderSide - this.shoulderSideSmoothed) * blendSpeed;
+
+		// Slide the camera sideways and up without turning it, so the character sits off-center
+		// Aiming pushes the camera further out over the shoulder to clear the view
+		this.offset.set((0.55 + 0.2 * this.aimAmount) * this.shoulderSideSmoothed, 0.15, 0).multiplyScalar(this.shoulderBlend);
+		this.offset.applyQuaternion(this.camera.quaternion);
+		this.camera.position.add(this.offset);
+
+		// Aiming zooms with the FOV
+		const perspective = this.camera as THREE.PerspectiveCamera;
+		const fov = this.baseFov / THREE.MathUtils.lerp(1, this.aimZoom, this.aimAmount * this.shoulderBlend);
+		if (Math.abs(perspective.fov - fov) > 0.01)
+		{
+			perspective.fov = fov;
+			perspective.updateProjectionMatrix();
+		}
+	}
+
+	private updateShake(timeStep: number): void
+	{
+		if (this.shake < 0.001) return;
+
+		const angle = this.shake * this.shake * 0.02;
+		this.camera.rotateX((Math.random() * 2 - 1) * angle);
+		this.camera.rotateY((Math.random() * 2 - 1) * angle);
+		this.shake *= Math.exp(-timeStep * 14);
 	}
 
 	public handleKeyboardEvent(event: KeyboardEvent, code: string, pressed: boolean): void
@@ -159,6 +248,7 @@ export class CameraOperator implements IInputReceiver, IUpdatable
 
 	public inputReceiverInit(): void
 	{
+		this.shoulderMode = false;
 		this.target.copy(this.camera.position);
 		this.setRadius(0, true);
 		// this.world.dirLight.target = this.world.camera;

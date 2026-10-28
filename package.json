@@ -15,7 +15,8 @@
 		"build": "npm run build -w @sketchfront/client",
 		"preview": "npm run preview -w @sketchfront/client",
 		"server": "npm run start -w @sketchfront/server",
-		"typecheck": "npm run typecheck --workspaces --if-present"
+		"typecheck": "npm run typecheck --workspaces --if-present",
+		"test": "npm run test --workspaces --if-present"
 	},
 	"engines": {
 		"node": ">=22.18"
