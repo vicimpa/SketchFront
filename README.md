@@ -1,98 +1,58 @@
 <p align="center">
-	<a href="https://jblaha.art/sketchbook/latest"><img src="./src/img/thumbnail.png"></a>
-	<br>
-	<a href="https://jblaha.art/sketchbook/latest">Live demo</a>
-	<br>
+	<img src="./docs/img/thumbnail.png">
 </p>
 
-# Final update (20. Feb 2023)
+# Sketchfront
 
-As I have no more interest in developing this project, it comes to a conclusion. In order to remain honest about the true state of the project, I am archiving this repository.
+Браузерный мультиплеерный шутер от третьего лица (рабочее название). Видение, стек, режимы
+и этапы — в [docs/GAME_BRIEF.md](docs/GAME_BRIEF.md).
 
-- If you wish to modify Sketchbook feel free to fork it.
-- To see if someone is currently maintaining a fork, check out the [Network Graph](https://github.com/swift502/Sketchbook/network).
+Основан на [Sketchbook](https://github.com/swift502/Sketchbook) Яна Блахи (MIT): персонаж
+с raycast-контроллером, техника (машины, вертолёты, самолёты) и пайплайн карт из Blender.
 
-# 📒 Sketchbook
+**Статус:** этап M0 — песочница Sketchbook перенесена на Vite, TypeScript 5, three.js r186
+и cannon-es и работает как раньше.
 
-Simple web based game engine built on [three.js](https://github.com/mrdoob/three.js) and [cannon.js](https://github.com/schteppe/cannon.js) focused on third-person character controls and related gameplay mechanics.
+## Запуск
 
-Mostly a playground for exploring how conventional third person gameplay mechanics found in modern games work and recreating them in a general way.
+Нужен Node.js 22.18+.
 
-## Features
-
-* World
-	* Three.js scene
-	* Cannon.js physics
-	* Variable timescale
-	* Frame skipping
-	* FXAA anti-aliasing
-* Characters
-	* Third-person camera
-	* Raycast character controller with capsule collisions
-	* General state system
-	* Character AI
-* Vehicles
-	* Cars
-	* Airplanes
-	* Helicopters
-
-All planned features can be found in the [GitHub Projects](https://github.com/swift502/Sketchbook/projects).
-
-## Usage
-
-You can define your own scenes in Blender, and then read them with Sketchbook. Sketchbook needs to run on a local server such as [http-server](https://www.npmjs.com/package/http-server) or [webpack-dev-server](https://github.com/webpack/webpack-dev-server) to be able to load external assets.
-
-<!-- #### Script tag -->
-
-1. Import:
-
-```html
-<script src="sketchbook.min.js"></script>
+```sh
+npm install
+npm run dev        # клиент на http://localhost:5173
+npm run build      # продакшен-сборка в packages/client/dist
+npm run preview    # раздать собранный клиент
+npm run typecheck  # tsc во всех пакетах
+npm run server     # заглушка игрового сервера (сеть появится в M3)
 ```
 
-2. Load a glb scene defined in Blender:
+В dev-режиме мир доступен из консоли браузера как `window.world`.
 
-```javascript
-const world = new Sketchbook.World('scene.glb');
-```
-
-<!--
-
-#### NPM
-
-1. Install:
+## Структура
 
 ```
-npm i sketchbook
+packages/
+  client/   Vite-приложение: рендер, физика, ввод, UI
+    src/        код игры (бывший Sketchbook)
+    src/lib/    вендорные dat.gui, stats, шейдеры неба и воды, отладчик физики
+    public/assets/  модели .glb, которые грузит клиент
+  shared/   общий код клиента и сервера: правила, оружие, режимы, протокол
+  server/   авторитетный игровой сервер (пока заглушка)
+assets/
+  blend/      исходники моделей и карты в Blender
+  CREDITS.md  учёт лицензий всех внешних ассетов
+docs/
+  GAME_BRIEF.md  мастер-документ проекта
+tools/        вспомогательные скрипты
 ```
 
-2. Import:
+## Карты из Blender
 
-```javascript
-import { World } from 'sketchbook';
-```
+Объекты в `.glb` несут custom properties, которые читает клиент: `data: physics`
+(`type: box|trimesh`), `data: path`, `data: scenario`, `data: spawn`
+(`type: player|car|heli|airplane`, `driver: ai|player`, `first_node`).
+Расширение схемы для режимов описано в брифе (§8).
 
-3. Load a glb scene defined in Blender:
+## Лицензия
 
-```javascript
-const world = new World('scene.glb');
-```
-
--->
-
-## Contributing
-
-1. Get the LTS version of [Node.js](https://nodejs.org/en/) 16
-2. [Fork this repository](https://help.github.com/en/github/getting-started-with-github/fork-a-repo)
-3. Run `npm install`
-4. Run `npm run dev`
-5. Make changes and test them out at http://localhost:8080
-6. Commit and [make a pull request](https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request-from-a-fork)!
-
-## Credits
-
-Big thank you to each of the following github users for contributing to Sketchbook:
-
-- [aleqsunder](https://github.com/aleqsunder)
-- [barhatsor](https://github.com/barhatsor)
-- [danshuri](https://github.com/danshuri)
+MIT, см. [LICENSE](LICENSE). Авторы и лицензии ассетов — в [assets/CREDITS.md](assets/CREDITS.md).

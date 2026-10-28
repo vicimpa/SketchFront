@@ -1,0 +1,16 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+		"types": ["vite/client"],
+		"allowJs": true,
+		// Legacy Sketchbook code predates strict mode. New code is written strict;
+		// flip these back on folder by folder as the old code gets rewritten.
+		"strict": false,
+		"noImplicitAny": false,
+		// The legacy classes rely on TS's old field semantics: a field declared without an
+		// initializer must not overwrite what a base-class constructor already assigned.
+		"useDefineForClassFields": false
+	},
+	"include": ["src", "vite.config.ts"]
+}

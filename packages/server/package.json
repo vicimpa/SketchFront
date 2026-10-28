@@ -1,0 +1,17 @@
+{
+	"name": "@sketchfront/server",
+	"private": true,
+	"version": "0.0.0",
+	"description": "Authoritative game server (Colyseus arrives in M3)",
+	"type": "module",
+	"scripts": {
+		"start": "node src/index.ts",
+		"typecheck": "tsc -p ."
+	},
+	"dependencies": {
+		"@sketchfront/shared": "*"
+	},
+	"devDependencies": {
+		"@types/node": "^22.0.0"
+	}
+}

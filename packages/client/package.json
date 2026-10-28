@@ -1,0 +1,22 @@
+{
+	"name": "@sketchfront/client",
+	"private": true,
+	"version": "0.0.0",
+	"description": "Browser client: rendering, physics, input, UI",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
+		"preview": "vite preview",
+		"typecheck": "tsc -p ."
+	},
+	"dependencies": {
+		"@sketchfront/shared": "*",
+		"cannon-es": "^0.20.0",
+		"three": "^0.186.1"
+	},
+	"devDependencies": {
+		"@types/three": "^0.186.0",
+		"vite": "^8.3.5"
+	}
+}
