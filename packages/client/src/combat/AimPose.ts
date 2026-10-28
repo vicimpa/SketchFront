@@ -9,6 +9,10 @@ const parentQuat = new THREE.Quaternion();
 const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
 const target = new THREE.Vector3();
+const basisX = new THREE.Vector3();
+const basisY = new THREE.Vector3();
+const basisZ = new THREE.Vector3();
+const basis = new THREE.Matrix4();
 
 export type HoldStyle = 'rifle' | 'pistol';
 
@@ -20,6 +24,7 @@ export type HoldStyle = 'rifle' | 'pistol';
 export class AimPose
 {
 	private spine: THREE.Object3D;
+	private hips: THREE.Object3D;
 	private head: THREE.Object3D;
 	private upperR: THREE.Object3D;
 	private lowerR: THREE.Object3D;
@@ -31,6 +36,7 @@ export class AimPose
 	constructor(model: THREE.Object3D)
 	{
 		this.spine = model.getObjectByName('body_upper');
+		this.hips = model.getObjectByName('body_lower');
 		this.head = model.getObjectByName('head');
 		this.upperR = model.getObjectByName('arm_upperR');
 		this.lowerR = model.getObjectByName('arm_lowerR');
@@ -40,7 +46,7 @@ export class AimPose
 
 	public get isSupported(): boolean
 	{
-		return [this.spine, this.head, this.upperR, this.lowerR, this.upperL, this.lowerL].every((bone) => bone !== undefined);
+		return [this.spine, this.hips, this.head, this.upperR, this.lowerR, this.upperL, this.lowerL].every((bone) => bone !== undefined);
 	}
 
 	/**
@@ -73,6 +79,33 @@ export class AimPose
 			pointBone(this.upperL, combine(aim, 1, right, 0.45, UP, -0.1), weight);
 			pointBone(this.lowerL, combine(aim, 1, right, 0.3, UP, 0), weight);
 		}
+	}
+
+	/**
+	 * Where a holstered weapon sits: long guns slung diagonally across the back,
+	 * pistols barrel-down on the right hip.
+	 */
+	public getHolster(style: HoldStyle, facing: THREE.Vector3, position: THREE.Vector3, quaternion: THREE.Quaternion): void
+	{
+		forward.copy(facing).setY(0).normalize();
+		right.crossVectors(forward, UP);
+
+		if (style === 'rifle')
+		{
+			position.setFromMatrixPosition(this.spine.matrixWorld).addScaledVector(UP, 0.08).addScaledVector(forward, -0.16);
+			basisZ.copy(UP).addScaledVector(right, -0.8).normalize();   // muzzle up over the left shoulder
+			basisY.copy(forward).negate();                              // top of the gun away from the back
+		}
+		else
+		{
+			position.setFromMatrixPosition(this.hips.matrixWorld).addScaledVector(right, 0.15).addScaledVector(UP, 0.02);
+			basisZ.copy(UP).negate();                                   // barrel down
+			basisY.copy(forward);
+		}
+
+		basisX.crossVectors(basisY, basisZ).normalize();
+		basisY.crossVectors(basisZ, basisX);
+		quaternion.setFromRotationMatrix(basis.makeBasis(basisX, basisY, basisZ));
 	}
 
 	/** World position of the right hand, where the weapon grip goes. */

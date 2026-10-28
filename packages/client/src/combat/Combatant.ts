@@ -11,9 +11,13 @@ import { createWeaponModel, WeaponModel } from './WeaponModels';
 const LOADOUT = ['rifle', 'shotgun', 'pistol'];
 const RESPAWN_DELAY = 3;
 const DEATH_FALL_TIME = 0.35;
-/** How long the character keeps facing the aim direction after a shot. */
-const FACE_AIM_AFTER_SHOT = 1;
-const AIM_WALK_SPEED = 0.55;
+/** How long combat stance lasts after the last shot or after letting go of aim. */
+const COMBAT_LINGER = 1.5;
+/** Time to bring a holstered weapon up; it can't fire until then. */
+const RAISE_TIME = 0.2;
+/** Move speed in combat stance, as an arcade velocity target (walking is 0.8). */
+const COMBAT_WALK_SPEED = 0.65;
+const AIM_WALK_SPEED = 0.5;
 
 const UP = new THREE.Vector3(0, 1, 0);
 const tmp = new THREE.Vector3();
@@ -34,6 +38,9 @@ export class Combatant
 	/** Smoothed aim from 0 (hip) to 1 (aimed down sights). */
 	public aimAmount: number = 0;
 	public sinceShot: number = Infinity;
+	/** 0 with the weapon holstered, 1 with it raised and ready to fire. */
+	public readiness: number = 0;
+	private sinceCombatInput: number = Infinity;
 	/** World point the weapon points at. */
 	public readonly aimPoint = new THREE.Vector3();
 
@@ -43,7 +50,6 @@ export class Combatant
 	public readonly spawnOrientation = new THREE.Vector3(0, 0, 1);
 
 	private pose: AimPose;
-	private poseWeight: number = 0;
 	private models: WeaponModel[];
 	private savedBehaviour: ICharacterAI;
 	private deathTime: number = 0;
@@ -94,9 +100,14 @@ export class Combatant
 		return !this.dead && this.character.occupyingSeat === null;
 	}
 
-	public get facesAim(): boolean
+	/**
+	 * Combat stance: weapon up, facing the aim, moving slower in any direction without turning.
+	 * Entered by aiming or pulling the trigger; otherwise the character runs freely
+	 * with the weapon holstered.
+	 */
+	public get inCombat(): boolean
 	{
-		return this.isArmed && (this.aimHeld || this.sinceShot < FACE_AIM_AFTER_SHOT);
+		return this.isArmed && (this.aimHeld || this.weapon.isTriggerHeld || this.sinceCombatInput < COMBAT_LINGER);
 	}
 
 	public get holdStyle(): HoldStyle
@@ -168,8 +179,12 @@ export class Combatant
 	public updateWeapon(timeStep: number): Shot[]
 	{
 		this.sinceShot += timeStep;
+		this.sinceCombatInput = this.aimHeld || this.weapon.isTriggerHeld ? 0 : this.sinceCombatInput + timeStep;
 
-		const aimTarget = this.isArmed && this.aimHeld ? 1 : 0;
+		const inCombat = this.inCombat;
+		this.readiness = THREE.MathUtils.clamp(this.readiness + (inCombat ? 1 : -1) * timeStep / RAISE_TIME, 0, 1);
+
+		const aimTarget = inCombat && this.aimHeld ? 1 : 0;
 		const aimSpeed = timeStep / this.weapon.def.aimTime;
 		this.aimAmount = THREE.MathUtils.clamp(this.aimAmount + Math.sign(aimTarget - this.aimAmount) * aimSpeed, 0, 1);
 
@@ -180,30 +195,27 @@ export class Combatant
 		}
 
 		const moving = this.character.velocity.lengthSq() > 0.01;
-		const shots = this.weapon.update(timeStep, this.aimAmount, moving);
+		const shots = this.weapon.update(timeStep, this.aimAmount, moving, inCombat && this.readiness >= 1);
 		if (shots.length > 0) this.sinceShot = 0;
 		return shots;
 	}
 
 	/**
-	 * Called by the character after its state update: face the aim direction while
-	 * aiming or shooting, and strafe instead of turning while aiming.
+	 * Called by the character after its state update. In combat stance the character
+	 * faces the aim and strafes at reduced speed; otherwise its state moves it as usual.
 	 */
 	public applyMovement(): void
 	{
 		const c = this.character;
 		c.movementOverride = null;
-		if (!this.facesAim || !c.rayHasHit) return;
+		if (!this.inCombat || !c.rayHasHit) return;
 
 		c.getWorldPosition(tmp2);
 		tmp.subVectors(this.aimPoint, tmp2).setY(0);
 		if (tmp.lengthSq() > 1e-4) c.setOrientation(tmp);
 
-		if (this.aimHeld)
-		{
-			const local = c.getLocalMovementDirection().multiplyScalar(AIM_WALK_SPEED * this.weapon.def.moveSpeed);
-			c.movementOverride = local;
-		}
+		const speed = (this.aimHeld ? AIM_WALK_SPEED : COMBAT_WALK_SPEED) * this.weapon.def.moveSpeed;
+		c.movementOverride = c.getLocalMovementDirection().multiplyScalar(speed);
 	}
 
 	/** Called by the character once its animation and transform are final for the frame. */
@@ -222,26 +234,29 @@ export class Combatant
 			return;
 		}
 
-		const armed = this.isArmed;
-		this.poseWeight = THREE.MathUtils.clamp(this.poseWeight + (armed ? 1 : -1) * timeStep * 6, 0, 1);
-
-		// Aim straight at the aim point when facing it, otherwise hold the weapon at low ready
+		// Raise the arms toward the aim point as the weapon comes up
 		c.getWorldPosition(tmp2).addScaledVector(UP, 0.25);
-		const aim = this.facesAim
-			? tmp.subVectors(this.aimPoint, tmp2).normalize()
-			: tmp.copy(c.orientation).setY(0).normalize().addScaledVector(UP, -0.6).normalize();
-
-		this.pose.apply(aim, c.orientation, this.holdStyle, this.poseWeight);
+		const aim = tmp.subVectors(this.aimPoint, tmp2).normalize();
+		const weight = THREE.MathUtils.smoothstep(this.readiness, 0, 1);
+		this.pose.apply(aim, c.orientation, this.holdStyle, weight);
 		this.hitboxes.update();
 
+		const armed = this.isArmed;
 		for (let i = 0; i < this.models.length; i++)
 		{
 			const root = this.models[i].root;
 			root.visible = armed && i === this.currentIndex;
 			if (!root.visible) continue;
 
-			this.pose.getHandPosition(root.position);
-			root.lookAt(tmp2.copy(root.position).add(aim));
+			if (this.readiness > 0.5)
+			{
+				this.pose.getHandPosition(root.position);
+				root.lookAt(tmp2.copy(root.position).add(aim));
+			}
+			else
+			{
+				this.pose.getHolster(this.holdStyle, c.orientation, root.position, root.quaternion);
+			}
 			root.updateMatrixWorld(true);
 		}
 	}
@@ -268,6 +283,8 @@ export class Combatant
 		this.dead = false;
 		this.health.reset();
 		this.sinceShot = Infinity;
+		this.sinceCombatInput = Infinity;
+		this.readiness = 0;
 		this.weapons = LOADOUT.map((id) => new WeaponState(WEAPONS[id]));
 		this.weapon.equip();
 

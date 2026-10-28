@@ -81,3 +81,11 @@ test('aiming reduces spread and recoil', () => {
 	const [aimedShot] = aimed.update(frame, 1, false);
 	assert.ok(aimedShot.recoilPitch < hipShot.recoilPitch);
 });
+
+test('a trigger pull before the weapon is raised fires once it is', () => {
+	const weapon = new WeaponState(pistol, () => 0.5);
+	weapon.pullTrigger();
+	weapon.releaseTrigger();
+	assert.equal(weapon.update(0.1, 0, false, false).length, 0);
+	assert.equal(weapon.update(frame, 0, false, true).length, 1);
+});

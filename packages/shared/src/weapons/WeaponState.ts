@@ -50,6 +50,11 @@ export class WeaponState
 		return this.equipLeft > 0;
 	}
 
+	public get isTriggerHeld(): boolean
+	{
+		return this.triggerHeld;
+	}
+
 	/** Reload progress from 0 to 1, or null when not reloading. */
 	public get reloadProgress(): number | null
 	{
@@ -99,8 +104,10 @@ export class WeaponState
 	/**
 	 * Advances timers and returns the rounds fired during dt, in order.
 	 * Several rounds come out in one call when dt is longer than the fire interval.
+	 * With canFire false (weapon not raised yet) timers run and a trigger pull is kept
+	 * until firing is allowed.
 	 */
-	public update(dt: number, aim: number, moving: boolean): Shot[]
+	public update(dt: number, aim: number, moving: boolean, canFire: boolean = true): Shot[]
 	{
 		const shots: Shot[] = [];
 
@@ -127,7 +134,7 @@ export class WeaponState
 		}
 
 		this.cooldown -= dt;
-		while (this.cooldown <= 0 && this.wantsToFire())
+		while (canFire && this.cooldown <= 0 && this.wantsToFire())
 		{
 			if (this.ammo <= 0)
 			{
