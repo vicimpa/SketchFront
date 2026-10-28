@@ -18,6 +18,15 @@ declare module 'cannon-es'
  */
 export class PhysicsWorld extends CANNON.World
 {
+	/** Where rendering sits between the last two physics steps, the t that interpolated poses use. */
+	public interpolationFactor: number = 0;
+
+	public step(dt: number, timeSinceLastCalled?: number, maxSubSteps?: number): void
+	{
+		super.step(dt, timeSinceLastCalled, maxSubSteps);
+		this.interpolationFactor = this.accumulator / dt;
+	}
+
 	public dispatchEvent(event: { type: string; [key: string]: any }): CANNON.EventTarget
 	{
 		super.dispatchEvent(event);

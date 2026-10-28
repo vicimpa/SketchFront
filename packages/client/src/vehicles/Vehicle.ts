@@ -13,6 +13,9 @@ import { SwitchingSeats } from '../characters/character_states/vehicles/Switchin
 import { EntityType } from '../enums/EntityType';
 import { IWorldEntity } from '../interfaces/IWorldEntity';
 
+const wheelPosition = new CANNON.Vec3();
+const wheelQuaternion = new CANNON.Quaternion();
+
 export abstract class Vehicle extends THREE.Object3D implements IWorldEntity
 {
 	public updateOrder: number = 2;
@@ -104,14 +107,14 @@ export abstract class Vehicle extends THREE.Object3D implements IWorldEntity
 			seat.update(timeStep);
 		});
 
+		const interpolationFactor = this.world.physicsWorld.interpolationFactor;
 		for (let i = 0; i < this.rayCastVehicle.wheelInfos.length; i++)
 		{
-			this.rayCastVehicle.updateWheelTransform(i);
-			let transform = this.rayCastVehicle.wheelInfos[i].worldTransform;
+			this.rayCastVehicle.getInterpolatedWheelTransform(i, interpolationFactor, wheelPosition, wheelQuaternion);
 
 			let wheelObject = this.wheels[i].wheelObject;
-			wheelObject.position.copy(Utils.threeVector(transform.position));
-			wheelObject.quaternion.copy(Utils.threeQuat(transform.quaternion));
+			wheelObject.position.copy(Utils.threeVector(wheelPosition));
+			wheelObject.quaternion.copy(Utils.threeQuat(wheelQuaternion));
 		}
 
 		this.updateMatrixWorld();
