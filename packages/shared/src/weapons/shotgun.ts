@@ -5,7 +5,7 @@ export const shotgun: WeaponDef = {
 	name: 'Shotgun',
 	slot: 'primary',
 
-	damage: 16,
+	damage: 18,
 	falloff: { start: 8, end: 25, minMultiplier: 0.25 },
 	zoneMultipliers: { head: 1.5, torso: 1, limb: 0.8 },
 	range: 60,

@@ -10,6 +10,7 @@ import { createWeaponModel, WeaponModel } from './WeaponModels';
 
 const LOADOUT = ['rifle', 'shotgun', 'pistol'];
 const RESPAWN_DELAY = 3;
+const SPAWN_PROTECTION = 2;
 const DEATH_FALL_TIME = 0.35;
 /** How long combat stance lasts after the last shot or after letting go of aim. */
 const COMBAT_LINGER = 1.5;
@@ -28,6 +29,10 @@ export class Combatant
 {
 	public readonly character: Character;
 	public readonly name: string;
+	/** Combatants on the same team never target each other. */
+	public team: string;
+	/** Who landed the killing blow, for the death camera. */
+	public killer: Combatant;
 	public readonly health = new Health();
 	public readonly hitboxes: Hitboxes;
 	public weapons: WeaponState[];
@@ -45,6 +50,8 @@ export class Combatant
 	public readonly aimPoint = new THREE.Vector3();
 
 	public dead: boolean = false;
+	/** Seconds of spawn protection left; no damage is taken meanwhile. */
+	public protectedFor: number = 0;
 	public respawnTimer: number = 0;
 	public readonly spawnPosition = new THREE.Vector3();
 	public readonly spawnOrientation = new THREE.Vector3(0, 0, 1);
@@ -54,10 +61,11 @@ export class Combatant
 	private savedBehaviour: ICharacterAI;
 	private deathTime: number = 0;
 
-	constructor(character: Character, name: string, scene: THREE.Scene, setupMaterial: (material: THREE.Material) => void)
+	constructor(character: Character, name: string, team: string, scene: THREE.Scene, setupMaterial: (material: THREE.Material) => void)
 	{
 		this.character = character;
 		this.name = name;
+		this.team = team;
 
 		const model = character.modelContainer;
 		this.hitboxes = new Hitboxes(model);
@@ -261,10 +269,11 @@ export class Combatant
 		}
 	}
 
-	public die(): void
+	public die(killer: Combatant): void
 	{
 		const c = this.character;
 		this.dead = true;
+		this.killer = killer;
 		this.deathTime = 0;
 		this.respawnTimer = RESPAWN_DELAY;
 		this.aimHeld = false;
@@ -277,10 +286,13 @@ export class Combatant
 		c.setState(new Dead(c));
 	}
 
-	public respawn(): void
+	/** Brings the character back at the given position, or where it first spawned. */
+	public respawn(position: THREE.Vector3 = this.spawnPosition): void
 	{
 		const c = this.character;
 		this.dead = false;
+		this.killer = undefined;
+		this.protectedFor = SPAWN_PROTECTION;
 		this.health.reset();
 		this.sinceShot = Infinity;
 		this.sinceCombatInput = Infinity;
@@ -289,7 +301,7 @@ export class Combatant
 		this.weapon.equip();
 
 		c.modelContainer.rotation.x = 0;
-		c.setPosition(this.spawnPosition.x, this.spawnPosition.y, this.spawnPosition.z);
+		c.setPosition(position.x, position.y, position.z);
 		c.resetVelocity();
 		c.setOrientation(this.spawnOrientation, true);
 		c.setState(new Idle(c));

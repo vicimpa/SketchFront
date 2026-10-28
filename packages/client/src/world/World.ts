@@ -32,6 +32,8 @@ import { Ocean } from './Ocean';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { Dialog } from '../core/Dialog';
 import { CombatSystem } from '../combat/CombatSystem';
+import { Navigation } from '../ai/Navigation';
+import { NavMeshHelper } from '@recast-navigation/three';
 
 export class World
 {
@@ -64,6 +66,10 @@ export class World
 	public scenarioGUIFolder: any;
 	public updatables: IUpdatable[] = [];
 	public combat: CombatSystem;
+	/** Built in the background after the level loads; undefined until then. */
+	public navigation: Navigation;
+
+	private navMeshHelper: NavMeshHelper;
 
 	private lastScenarioID: string;
 	private lastTime: number;
@@ -175,14 +181,15 @@ export class World
 			loadingManager.onFinishedCallback = () =>
 			{
 				this.update(1, 1);
-				this.setTimeScale(1);
-	
+
+				// The world waits behind the dialog, so bots can't attack a player who is still reading
 				Dialog.show({
 					title: 'Welcome to Sketchbook!',
 					text: 'Feel free to explore the world and interact with available vehicles. There are also various scenarios ready to launch from the right panel.',
 					footer: '<a href="https://github.com/swift502/Sketchbook" target="_blank" rel="noopener">GitHub page</a><a href="https://discord.gg/fGuEqCe" target="_blank" rel="noopener">Discord server</a>',
 					confirmText: 'Okay',
 					onClose: () => {
+						this.setTimeScale(1);
 						UIManager.setUserInterfaceVisible(true);
 					}
 				});
@@ -415,6 +422,15 @@ export class World
 
 		this.graphicsWorld.add(gltf.scene);
 
+		const navStart = performance.now();
+		Navigation.build(this.physicsWorld)
+			.then((navigation) =>
+			{
+				this.navigation = navigation;
+				console.info(`Navmesh built in ${Math.round(performance.now() - navStart)} ms`);
+			})
+			.catch((error) => console.error(error));
+
 		// Launch default scenario
 		let defaultScenarioID: string;
 		for (const scenario of this.scenarios) {
@@ -561,6 +577,7 @@ export class World
 			FXAA: true,
 			Debug_Physics: false,
 			Debug_FPS: false,
+			Debug_Navmesh: false,
 			Sun_Elevation: 50,
 			Sun_Rotation: 145,
 		};
@@ -635,6 +652,23 @@ export class World
 				{
 					char.raycastBox.visible = enabled;
 				});
+			});
+		settingsFolder.add(this.params, 'Debug_Navmesh')
+			.onChange((enabled) =>
+			{
+				if (enabled && this.navigation !== undefined)
+				{
+					this.navMeshHelper = new NavMeshHelper(this.navigation.navMesh, {
+						navMeshMaterial: new THREE.MeshBasicMaterial({ color: 0x2fb6ff, transparent: true, opacity: 0.35, depthWrite: false }),
+					});
+					this.navMeshHelper.position.y += 0.05;
+					this.graphicsWorld.add(this.navMeshHelper);
+				}
+				else if (this.navMeshHelper !== undefined)
+				{
+					this.graphicsWorld.remove(this.navMeshHelper);
+					this.navMeshHelper = undefined;
+				}
 			});
 		settingsFolder.add(this.params, 'Debug_FPS')
 			.onChange((enabled) =>

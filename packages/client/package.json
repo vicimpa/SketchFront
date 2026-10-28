@@ -11,8 +11,10 @@
 		"typecheck": "tsc -p ."
 	},
 	"dependencies": {
+		"@recast-navigation/three": "^0.43.1",
 		"@sketchfront/shared": "*",
 		"cannon-es": "^0.20.0",
+		"recast-navigation": "^0.43.1",
 		"three": "^0.186.1"
 	},
 	"devDependencies": {

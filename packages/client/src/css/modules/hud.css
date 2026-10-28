@@ -161,3 +161,47 @@
 	width: calc(var(--progress) * 100%);
 	background: #ffd23f;
 }
+
+/* Damage direction: arcs around the crosshair pointing at the attacker */
+.hud-damage-arrows {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+}
+
+.hud-damage-arrow {
+	position: absolute;
+	left: -60px;
+	top: -110px;
+	width: 120px;
+	height: 120px;
+	transform-origin: 60px 110px;
+	animation: hud-damage-arrow 1.2s ease-out forwards;
+}
+
+.hud-damage-arrow::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border-top: 6px solid rgba(255, 40, 40, 0.9);
+	border-radius: 50%;
+	filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.7));
+}
+
+@keyframes hud-damage-arrow {
+	from { opacity: 1; }
+	to { opacity: 0; }
+}
+
+/* Death banner */
+.hud-death {
+	display: none;
+	position: absolute;
+	top: 28%;
+	left: 0;
+	right: 0;
+	text-align: center;
+}
+
+.hud-death-title { font-size: 40px; color: #ff4a4a; text-transform: uppercase; letter-spacing: 2px; }
+.hud-death-timer { font-size: 22px; color: #e6e6e6; }

@@ -5,14 +5,21 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { damageForHit, intersectRayCapsule, type HitZone, type Shot, type WeaponDef } from '@sketchfront/shared';
 import { World } from '../world/World';
 import { Character } from '../characters/Character';
-import { RandomBehaviour } from '../characters/character_ai/RandomBehaviour';
+import { BotBrain } from '../ai/BotBrain';
 import { CollisionGroups } from '../enums/CollisionGroups';
 import { IUpdatable } from '../interfaces/IUpdatable';
 import { Effects } from '../fx/Effects';
 import { Hud, HitmarkerKind } from '../hud/Hud';
 import { Combatant } from './Combatant';
 
-const TRAINING_BOTS = 5;
+/** Wandering bots around the player; `?bots=N` in the URL overrides it, `?bots=0` turns them off. */
+const TRAINING_BOTS = Number(new URLSearchParams(window.location.search).get('bots') ?? 5);
+/** Bots allowed to shoot at the same target at once; the rest reposition and wait. */
+const ATTACKERS_PER_TARGET = 2;
+/** Bots come back at least this far from the player. */
+const BOT_RESPAWN_DISTANCE: [min: number, max: number] = [18, 35];
+const PLAYER_TEAM = 'player';
+const BOT_TEAM = 'bots';
 /** Characters farther than this from a ray skip the per-capsule tests. */
 const CHARACTER_BOUNDS = 1.2;
 
@@ -52,6 +59,7 @@ export class CombatSystem implements IUpdatable
 
 	private world: World;
 	private combatants = new Map<Character, Combatant>();
+	private attackers = new Map<Combatant, Set<Combatant>>();
 	private botModel: Promise<GLTF>;
 	private botsSpawnedFor: Character;
 	private botCount: number = 0;
@@ -67,6 +75,31 @@ export class CombatSystem implements IUpdatable
 
 		// Right mouse button aims, keep the context menu out of the way
 		world.renderer.domElement.addEventListener('contextmenu', (event) => event.preventDefault());
+	}
+
+	public getCombatants(): IterableIterator<Combatant>
+	{
+		return this.combatants.values();
+	}
+
+	/** Claims one of the target's attack slots; false when enough others are already shooting at it. */
+	public tryAcquireAttack(attacker: Combatant, target: Combatant): boolean
+	{
+		let set = this.attackers.get(target);
+		if (set === undefined) this.attackers.set(target, set = new Set());
+
+		// Drop attackers that died or stopped fighting without letting go
+		for (const other of set) if (other.dead || other.character.world === undefined) set.delete(other);
+
+		if (set.has(attacker)) return true;
+		if (set.size >= ATTACKERS_PER_TARGET) return false;
+		set.add(attacker);
+		return true;
+	}
+
+	public releaseAttack(attacker: Combatant, target: Combatant): void
+	{
+		this.attackers.get(target)?.delete(attacker);
 	}
 
 	/** The character the player controls on foot, if any. */
@@ -86,15 +119,17 @@ export class CombatSystem implements IUpdatable
 		for (const combatant of this.combatants.values())
 		{
 			combatant.health.update(timeStep);
+			combatant.protectedFor = Math.max(0, combatant.protectedFor - timeStep);
 
+			const isPlayer = combatant.character === player;
 			if (combatant.dead)
 			{
+				if (isPlayer) this.updateDeathCamera(combatant);
 				combatant.respawnTimer -= timeStep;
-				if (combatant.respawnTimer <= 0) combatant.respawn();
+				if (combatant.respawnTimer <= 0) combatant.respawn(isPlayer ? undefined : this.botRespawnPoint());
 				continue;
 			}
 
-			const isPlayer = combatant.character === player;
 			if (isPlayer) this.updatePlayerAim(combatant);
 
 			for (const shot of combatant.updateWeapon(timeStep))
@@ -113,8 +148,9 @@ export class CombatSystem implements IUpdatable
 		{
 			if (this.combatants.has(character)) continue;
 
-			const name = character === this.player ? 'You' : `Bot ${++this.botCount}`;
-			const combatant = new Combatant(character, name, this.world.graphicsWorld, (material) => this.world.sky.csm.setupMaterial(material));
+			const isPlayer = character === this.player;
+			const name = isPlayer ? 'You' : `Bot ${++this.botCount}`;
+			const combatant = new Combatant(character, name, isPlayer ? PLAYER_TEAM : BOT_TEAM, this.world.graphicsWorld, (material) => this.world.sky.csm.setupMaterial(material));
 			character.combat = combatant;
 			this.combatants.set(character, combatant);
 		}
@@ -126,6 +162,8 @@ export class CombatSystem implements IUpdatable
 			combatant.dispose(this.world.graphicsWorld);
 			character.combat = undefined;
 			this.combatants.delete(character);
+			this.attackers.delete(combatant);
+			for (const set of this.attackers.values()) set.delete(combatant);
 		}
 	}
 
@@ -179,7 +217,7 @@ export class CombatSystem implements IUpdatable
 			this.effects.impact(hit.point, hit.normal, hit.target ? 'flesh' : 'world');
 			if (hit.target === undefined) continue;
 
-			const marker = this.damage(hit.target, shooter, damageForHit(def, hit.distance, hit.zone), hit.zone, def, direction);
+			const marker = this.damage(hit.target, shooter, damageForHit(def, hit.distance, hit.zone), hit.zone, def);
 			if (marker === 'kill' || (marker === 'headshot' && bestMarker !== 'kill') || bestMarker === undefined) bestMarker = marker;
 		}
 
@@ -194,19 +232,23 @@ export class CombatSystem implements IUpdatable
 	}
 
 	/** Applies damage and returns the hitmarker the shooter should see. */
-	private damage(target: Combatant, attacker: Combatant, amount: number, zone: HitZone, def: WeaponDef, direction: THREE.Vector3): HitmarkerKind
+	private damage(target: Combatant, attacker: Combatant, amount: number, zone: HitZone, def: WeaponDef): HitmarkerKind
 	{
-		const taken = target.health.damage(amount);
+		const taken = target.protectedFor > 0 ? 0 : target.health.damage(amount);
 
 		if (target.character === this.player)
 		{
 			this.hud.damageFlash(taken / 50);
+			this.hud.damageDirection(this.screenAngleTo(attacker.character.position));
 			this.world.cameraOperator.addShake(0.3);
 		}
 
+		const behaviour = target.character.behaviour;
+		if (behaviour instanceof BotBrain) behaviour.onDamaged(attacker);
+
 		if (!target.health.isDead) return zone === 'head' ? 'headshot' : 'hit';
 
-		target.die();
+		target.die(attacker);
 		const involvesPlayer = attacker.character === this.player || target.character === this.player;
 		this.hud.addKill(attacker.name, target.name, def.name, zone === 'head', involvesPlayer);
 		return 'kill';
@@ -261,11 +303,52 @@ export class CombatSystem implements IUpdatable
 		return best;
 	}
 
+	/** Angle of a world point around the screen center: 0 straight ahead, positive to the right. */
+	private screenAngleTo(point: THREE.Vector3): number
+	{
+		this.world.camera.getWorldDirection(forward).setY(0).normalize();
+		direction.subVectors(point, this.world.camera.position).setY(0).normalize();
+		right.crossVectors(forward, THREE.Object3D.DEFAULT_UP);
+		return Math.atan2(direction.dot(right), direction.dot(forward));
+	}
+
+	/** While the player is down, swing the camera around to face the killer. */
+	private updateDeathCamera(player: Combatant): void
+	{
+		const killer = player.killer;
+		this.hud.setDeathMessage(`Killed by ${killer?.name ?? 'the world'}`, player.respawnTimer);
+		if (killer === undefined || killer === player) return;
+
+		player.character.getWorldPosition(origin);
+		direction.subVectors(killer.character.position, origin).normalize();
+		const camera = this.world.cameraOperator;
+		const theta = THREE.MathUtils.radToDeg(Math.atan2(-direction.x, -direction.z));
+		const delta = ((theta - camera.theta) % 360 + 540) % 360 - 180;
+		camera.theta += delta * 0.08;
+		camera.phi += (10 - camera.phi) * 0.08;
+	}
+
+	/** A random reachable point away from the player, as a character position. */
+	private botRespawnPoint(): THREE.Vector3 | undefined
+	{
+		const player = this.player;
+		const navigation = this.world.navigation;
+		if (player === undefined || navigation === undefined) return undefined;
+
+		for (let attempt = 0; attempt < 10; attempt++)
+		{
+			const point = navigation.randomPointAround(player.position, BOT_RESPAWN_DISTANCE[1]);
+			if (point !== null && point.distanceTo(player.position) >= BOT_RESPAWN_DISTANCE[0]) return point.setY(point.y + 0.6);
+		}
+		return undefined;
+	}
+
 	private updateHud(player: Character | undefined): void
 	{
 		const combatant = player?.combat;
 		const visible = combatant !== undefined && (combatant.isArmed || combatant.dead);
 		this.hud.setVisible(visible);
+		if (combatant === undefined || !combatant.dead) this.hud.setDeathMessage(null);
 
 		const camera = this.world.cameraOperator;
 		camera.aimAmount = combatant?.aimAmount ?? 0;
@@ -281,9 +364,11 @@ export class CombatSystem implements IUpdatable
 	}
 
 	/** Scatters a few wandering bots around the player to have something to shoot at. */
+	/** Scatters a few bots on the navmesh some way off from the player. */
 	private ensureTrainingBots(player: Character): void
 	{
-		if (this.botsSpawnedFor === player) return;
+		// Bots need the navmesh to find spawn points and to walk
+		if (this.botsSpawnedFor === player || this.world.navigation === undefined || !(TRAINING_BOTS > 0)) return;
 		this.botsSpawnedFor = player;
 
 		this.botModel ??= new GLTFLoader().loadAsync('assets/boxman.glb');
@@ -291,32 +376,18 @@ export class CombatSystem implements IUpdatable
 		{
 			if (this.botsSpawnedFor !== player || player.world === undefined) return;
 
-			const center = player.position;
 			for (let i = 0; i < TRAINING_BOTS; i++)
 			{
-				const angle = (i / TRAINING_BOTS) * Math.PI * 2 + Math.random() * 0.5;
-				const distance = 6 + Math.random() * 6;
-				const x = center.x + Math.sin(angle) * distance;
-				const z = center.z + Math.cos(angle) * distance;
-				const ground = this.groundHeight(x, center.y, z);
-				if (ground === undefined) continue;
+				const position = this.botRespawnPoint();
+				if (position === undefined) continue;
 
 				const bot = new Character({ scene: SkeletonUtils.clone(gltf.scene), animations: gltf.animations });
-				bot.setPosition(x, ground + 0.6, z);
-				bot.setOrientation(new THREE.Vector3(-Math.sin(angle), 0, -Math.cos(angle)), true);
-				bot.setBehaviour(new RandomBehaviour(150));
+				bot.setPosition(position.x, position.y, position.z);
+				bot.setOrientation(new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5), true);
+				bot.setBehaviour(new BotBrain());
 				this.world.add(bot);
 			}
 		});
-	}
-
-	private groundHeight(x: number, y: number, z: number): number | undefined
-	{
-		rayFrom.set(x, y + 10, z);
-		rayTo.set(x, y - 20, z);
-		rayResult.reset();
-		const hit = this.world.physicsWorld.raycastClosest(rayFrom, rayTo, { collisionFilterMask: CollisionGroups.Default, skipBackfaces: true }, rayResult);
-		return hit ? rayResult.hitPointWorld.y : undefined;
 	}
 }
 

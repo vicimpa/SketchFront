@@ -17,6 +17,8 @@ export class Hud
 	private healthText: HTMLElement;
 	private killfeed: HTMLElement;
 	private damage: HTMLElement;
+	private damageArrows: HTMLElement;
+	private death: HTMLElement;
 	private hitmarkerTimer: number;
 
 	constructor()
@@ -27,6 +29,8 @@ export class Hud
 			<div class="hud-crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="dot"></i></div>
 			<div class="hud-hitmarker"><i></i><i></i><i></i><i></i></div>
 			<div class="hud-damage"></div>
+			<div class="hud-damage-arrows"></div>
+			<div class="hud-death"><div class="hud-death-title"></div><div class="hud-death-timer"></div></div>
 			<div class="hud-killfeed"></div>
 			<div class="hud-health">
 				<div class="hud-health-text"></div>
@@ -43,6 +47,8 @@ export class Hud
 		this.crosshair = this.root.querySelector('.hud-crosshair');
 		this.hitmarker = this.root.querySelector('.hud-hitmarker');
 		this.damage = this.root.querySelector('.hud-damage');
+		this.damageArrows = this.root.querySelector('.hud-damage-arrows');
+		this.death = this.root.querySelector('.hud-death');
 		this.killfeed = this.root.querySelector('.hud-killfeed');
 		this.healthFill = this.root.querySelector('.hud-health-fill');
 		this.healthText = this.root.querySelector('.hud-health-text');
@@ -110,6 +116,25 @@ export class Hud
 		this.killfeed.prepend(row);
 		while (this.killfeed.children.length > KILLFEED_SIZE) this.killfeed.lastElementChild.remove();
 		window.setTimeout(() => row.remove(), KILLFEED_LIFETIME);
+	}
+
+	/** Red arc around the crosshair pointing toward where the damage came from. Angle in radians, 0 ahead, positive right. */
+	public damageDirection(angle: number): void
+	{
+		const arrow = document.createElement('div');
+		arrow.className = 'hud-damage-arrow';
+		arrow.style.transform = `rotate(${angle}rad)`;
+		this.damageArrows.appendChild(arrow);
+		window.setTimeout(() => arrow.remove(), 1200);
+	}
+
+	/** Death banner with the respawn countdown; null hides it. */
+	public setDeathMessage(title: string | null, respawnIn: number = 0): void
+	{
+		this.death.style.display = title === null ? 'none' : 'block';
+		if (title === null) return;
+		this.death.querySelector('.hud-death-title').textContent = title;
+		this.death.querySelector('.hud-death-timer').textContent = `Respawn in ${Math.max(0, respawnIn).toFixed(1)}`;
 	}
 
 	/** Red edge flash when the player takes damage; strength from 0 to 1. */
